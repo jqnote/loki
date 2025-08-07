@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"reflect"
 	"regexp"
+	"strings"
+	"sync"
 	"text/template"
 	"time"
 
@@ -53,7 +55,10 @@ func validateReplaceConfig(c *ReplaceConfig) (*regexp.Regexp, error) {
 type replaceStage struct {
 	cfg        *ReplaceConfig
 	expression *regexp.Regexp
+	template   *template.Template // 预编译模板，避免重复解析
 	logger     log.Logger
+	// 对象池，减少内存分配
+	bufferPool sync.Pool
 }
 
 // newReplaceStage creates a newReplaceStage
@@ -67,10 +72,22 @@ func newReplaceStage(logger log.Logger, config interface{}) (Stage, error) {
 		return nil, err
 	}
 
+	// 预编译模板，避免每次处理时重新解析
+	templ, err := template.New("pipeline_template").Funcs(functionMap).Parse(cfg.Replace)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to parse replace template")
+	}
+
 	return toStage(&replaceStage{
 		cfg:        cfg,
 		expression: expression,
+		template:   templ,
 		logger:     log.With(logger, "component", "stage", "type", "replace"),
+		bufferPool: sync.Pool{
+			New: func() interface{} {
+				return &bytes.Buffer{}
+			},
+		},
 	}), nil
 }
 
@@ -130,16 +147,7 @@ func (r *replaceStage) Process(_ model.LabelSet, extracted map[string]interface{
 	// All extracted values will be available for templating
 	td := r.getTemplateData(extracted)
 
-	// Initialize the template with the "replace" string defined by user
-	templ, err := template.New("pipeline_template").Funcs(functionMap).Parse(r.cfg.Replace)
-	if err != nil {
-		if Debug {
-			level.Debug(r.logger).Log("msg", "template initialization error", "err", err)
-		}
-		return
-	}
-
-	result, capturedMap, err := r.getReplacedEntry(matchAllIndex, *input, td, templ)
+	result, capturedMap, err := r.getReplacedEntry(matchAllIndex, *input, td)
 	if err != nil {
 		if Debug {
 			level.Debug(r.logger).Log("msg", "failed to execute template on extracted value", "err", err)
@@ -154,7 +162,8 @@ func (r *replaceStage) Process(_ model.LabelSet, extracted map[string]interface{
 	}
 
 	// All the named captured group will be extracted
-	for i, name := range r.expression.SubexpNames() {
+	subexpNames := r.expression.SubexpNames()
+	for i, name := range subexpNames {
 		if i != 0 && name != "" {
 			if v, ok := capturedMap[match[i]]; ok {
 				extracted[name] = v
@@ -166,10 +175,17 @@ func (r *replaceStage) Process(_ model.LabelSet, extracted map[string]interface{
 	}
 }
 
-func (r *replaceStage) getReplacedEntry(matchAllIndex [][]int, input string, td map[string]string, templ *template.Template) (string, map[string]string, error) {
-	var result string
+func (r *replaceStage) getReplacedEntry(matchAllIndex [][]int, input string, td map[string]string) (string, map[string]string, error) {
+	var result strings.Builder
 	previousInputEndIndex := 0
-	capturedMap := make(map[string]string)
+	capturedMap := make(map[string]string, len(matchAllIndex)*2)
+	
+	buf := r.bufferPool.Get().(*bytes.Buffer)
+	defer func() {
+		buf.Reset()
+		r.bufferPool.Put(buf)
+	}()
+	
 	// For a simple string like `11.11.11.11 - frank 12.12.12.12 - frank`
 	// if the regex is "(\\d{2}.\\d{2}.\\d{2}.\\d{2}) - (\\S+)"
 	// FindAllStringSubmatchIndex would return [[0 19 0 11 14 19] [20 37 20 31 34 37]].
@@ -183,25 +199,30 @@ func (r *replaceStage) getReplacedEntry(matchAllIndex [][]int, input string, td 
 				continue
 			}
 			capturedString := input[matchIndex[i]:matchIndex[i+1]]
-			buf := &bytes.Buffer{}
+			
+			buf.Reset()
 			td["Value"] = capturedString
-			err := templ.Execute(buf, td)
+			err := r.template.Execute(buf, td)
 			if err != nil {
 				return "", nil, err
 			}
 			st := buf.String()
+			
 			if previousInputEndIndex == 0 || previousInputEndIndex <= matchIndex[i] {
-				result += input[previousInputEndIndex:matchIndex[i]] + st
+				result.WriteString(input[previousInputEndIndex:matchIndex[i]])
+				result.WriteString(st)
 				previousInputEndIndex = matchIndex[i+1]
 			}
 			capturedMap[capturedString] = st
 		}
 	}
-	return result + input[previousInputEndIndex:], capturedMap, nil
+	
+	result.WriteString(input[previousInputEndIndex:])
+	return result.String(), capturedMap, nil
 }
 
 func (r *replaceStage) getTemplateData(extracted map[string]interface{}) map[string]string {
-	td := make(map[string]string)
+	td := make(map[string]string, len(extracted))
 	for k, v := range extracted {
 		s, err := getString(v)
 		if err != nil {
