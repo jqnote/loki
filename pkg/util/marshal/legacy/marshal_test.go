@@ -59,6 +59,7 @@ var queryTests = []struct {
 				"index": {
 					"postFilterChunks": 0,
 					"totalChunks": 0,
+					"totalStreams": 0,
 					"usedBloomFilters": false,
 					"shardsDuration": 0
 				},
@@ -70,6 +71,7 @@ var queryTests = []struct {
 						"totalChunksDownloaded": 0,
 						"chunkRefsFetchTime": 0,
 						"queryReferencedStructuredMetadata": false,
+						"queryUsedV2Engine": false,
 				 		"pipelineWrapperFilteredLines": 0,
 						"chunk" :{
 							"compressedBytes": 0,
@@ -94,6 +96,7 @@ var queryTests = []struct {
 							"prePredicateDecompressedRows": 0,
 							"prePredicateDecompressedBytes": 0,
 							"prePredicateDecompressedStructuredMetadataBytes": 0,
+							"totalPageDownloadTime": 0,
 							"totalRowsAvailable": 0
 						}
 					},
@@ -110,7 +113,8 @@ var queryTests = []struct {
 						"totalChunksDownloaded": 0,
 						"chunkRefsFetchTime": 0,
 						"queryReferencedStructuredMetadata": false,
-				                "pipelineWrapperFilteredLines": 0,
+						"queryUsedV2Engine": false,
+		                "pipelineWrapperFilteredLines": 0,
 						"chunk" :{
 							"compressedBytes": 0,
 							"decompressedBytes": 0,
@@ -134,6 +138,7 @@ var queryTests = []struct {
 							"prePredicateDecompressedRows": 0,
 							"prePredicateDecompressedBytes": 0,
 							"prePredicateDecompressedStructuredMetadataBytes": 0,
+							"totalPageDownloadTime": 0,
 							"totalRowsAvailable": 0
 						}
 					}

@@ -194,9 +194,21 @@ func NewProxy(cfg ProxyConfig, logger log.Logger, readRoutes, writeRoutes []Rout
 			return nil, errors.Wrap(err, "failed to create goldfish storage")
 		}
 
+		var resultStore goldfish.ResultStore
+		if cfg.Goldfish.ResultsStorage.Enabled {
+			resultStore, err = goldfish.NewResultStore(context.Background(), cfg.Goldfish.ResultsStorage, logger)
+			if err != nil {
+				storage.Close()
+				return nil, errors.Wrap(err, "failed to create goldfish result store")
+			}
+		}
+
 		// Create Goldfish manager
-		goldfishManager, err := goldfish.NewManager(cfg.Goldfish, storage, logger, registerer)
+		goldfishManager, err := goldfish.NewManager(cfg.Goldfish, storage, resultStore, logger, registerer)
 		if err != nil {
+			if resultStore != nil {
+				_ = resultStore.Close(context.Background())
+			}
 			storage.Close()
 			return nil, errors.Wrap(err, "failed to create goldfish manager")
 		}
@@ -204,7 +216,9 @@ func NewProxy(cfg ProxyConfig, logger log.Logger, readRoutes, writeRoutes []Rout
 
 		level.Info(logger).Log("msg", "Goldfish enabled",
 			"storage_type", cfg.Goldfish.StorageConfig.Type,
-			"default_rate", cfg.Goldfish.SamplingConfig.DefaultRate)
+			"default_rate", cfg.Goldfish.SamplingConfig.DefaultRate,
+			"results_mode", string(cfg.Goldfish.ResultsStorage.Mode),
+			"results_backend", cfg.Goldfish.ResultsStorage.Backend)
 	}
 
 	return p, nil
@@ -255,10 +269,11 @@ func (p *Proxy) Start() error {
 	p.srvListener = listener
 	// Wrap router with tracing middleware
 	var handler http.Handler = router
-	// Always wrap with tracing middleware when tracing libraries are available
-	tracer := middleware.NewTracer(nil, false, nil)
+	// Configure tracing middleware to extract trace headers
+	// This ensures trace context is properly propagated from incoming requests
+	tracer := middleware.NewTracer(nil, true, nil) // true enables trace header extraction
 	handler = tracer.Wrap(router)
-	level.Info(p.logger).Log("msg", "HTTP tracing middleware enabled")
+	level.Info(p.logger).Log("msg", "HTTP tracing middleware enabled with header extraction")
 
 	p.srv = &http.Server{
 		ReadTimeout:  1 * time.Minute,

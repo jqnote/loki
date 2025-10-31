@@ -6,13 +6,15 @@ import (
 
 // QuerySample represents a sampled query with performance stats from both cells
 type QuerySample struct {
-	CorrelationID string        `json:"correlationId"`
-	TenantID      string        `json:"tenantId"`
-	Query         string        `json:"query"`
-	QueryType     string        `json:"queryType"`
-	StartTime     time.Time     `json:"startTime"`
-	EndTime       time.Time     `json:"endTime"`
-	Step          time.Duration `json:"step"`
+	CorrelationID   string        `json:"correlationId"`
+	TenantID        string        `json:"tenantId"`
+	User            string        `json:"user"`
+	IsLogsDrilldown bool          `json:"isLogsDrilldown"`
+	Query           string        `json:"query"`
+	QueryType       string        `json:"queryType"`
+	StartTime       time.Time     `json:"startTime"`
+	EndTime         time.Time     `json:"endTime"`
+	Step            time.Duration `json:"step"`
 
 	// Performance statistics instead of raw responses
 	CellAStats QueryStats `json:"cellAStats"`
@@ -27,6 +29,16 @@ type QuerySample struct {
 	CellBStatusCode   int    `json:"cellBStatusCode"`
 	CellATraceID      string `json:"cellATraceID"`
 	CellBTraceID      string `json:"cellBTraceID"`
+	CellASpanID       string `json:"cellASpanID"`
+	CellBSpanID       string `json:"cellBSpanID"`
+
+	// Result storage metadata
+	CellAResultURI         string `json:"cellAResultURI"`
+	CellBResultURI         string `json:"cellBResultURI"`
+	CellAResultSize        int64  `json:"cellAResultSize"`
+	CellBResultSize        int64  `json:"cellBResultSize"`
+	CellAResultCompression string `json:"cellAResultCompression"`
+	CellBResultCompression string `json:"cellBResultCompression"`
 
 	// Query engine version tracking
 	CellAUsedNewEngine bool `json:"cellAUsedNewEngine"`
@@ -77,10 +89,11 @@ type PerformanceMetrics struct {
 	BytesRatio      float64
 }
 
-// Constants for outcome filtering
-const (
-	OutcomeAll      = "all"
-	OutcomeMatch    = "match"
-	OutcomeMismatch = "mismatch"
-	OutcomeError    = "error"
-)
+// QueryFilter contains filters for querying sampled queries
+type QueryFilter struct {
+	Tenant          string
+	User            string
+	IsLogsDrilldown *bool // pointer to handle true/false/nil states
+	UsedNewEngine   *bool // pointer to handle true/false/nil states
+	From, To        time.Time
+}

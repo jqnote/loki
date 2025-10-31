@@ -22,14 +22,13 @@ func TestBuilder(t *testing.T) {
 		{path: "bar", start: unixTime(10), end: unixTime(20)},
 	}
 
-	ib := NewBuilder(nil, 1024)
+	ib := NewBuilder(nil, 1024, 0)
 	for _, p := range pp {
 		ib.Append(p.path, p.start, p.end)
 	}
 
-	b := dataobj.NewBuilder()
-	err := b.Append(ib)
-	require.NoError(t, err)
+	b := dataobj.NewBuilder(nil)
+	require.NoError(t, b.Append(ib))
 
 	obj, closer, err := b.Flush()
 	require.NoError(t, err)

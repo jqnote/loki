@@ -28,7 +28,7 @@ func Test(t *testing.T) {
 		{labels.FromStrings("cluster", "test", "app", "foo"), time.Unix(9, 0), 5},
 	}
 
-	tracker := streams.NewBuilder(nil, 1024)
+	tracker := streams.NewBuilder(nil, 1024, 0)
 	for _, tc := range tt {
 		tracker.Record(tc.Labels, tc.Time, tc.Size)
 	}
@@ -79,7 +79,7 @@ func copyLabels(in labels.Labels) labels.Labels {
 }
 
 func buildObject(st *streams.Builder) (*dataobj.Object, io.Closer, error) {
-	builder := dataobj.NewBuilder()
+	builder := dataobj.NewBuilder(nil)
 	if err := builder.Append(st); err != nil {
 		return nil, nil, err
 	}
